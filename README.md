@@ -104,10 +104,10 @@ Stability_key=your_stability_api_key
 
 ### GigaChat (Sber)
 
-1. Зарегистрируйтесь на [SberBank](https://developers.sber.ru/)
+1. Зарегистрируйтесь на [developers.sber.ru](https://developers.sber.ru/)
 2. Создайте приложение в личном кабинете
 3. Получите CLIENT_ID и CLIENT_SECRET
-4. Создайте AUTHORIZATION_KEY по инструкции на сайте [SberBank](https://developers.sber.ru/)
+4. Создайте AUTHORIZATION_KEY по инструкции на сайте [developers.sber.ru](https://developers.sber.ru/)
 5. Добавьте в `.env`:
 ```
 CLIENT_ID=your_client_id

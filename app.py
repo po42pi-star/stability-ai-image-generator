@@ -169,22 +169,7 @@ def index():
 @app.route('/generate', methods=['POST'])
 def generate():
     """Запуск генерации"""
-
-        # Очистка старых задач
-    cleanup_old_tasks()
     
-    data = request.get_json()
-    
-    task_id = str(uuid.uuid4())
-    tasks[task_id] = {
-        'status': 'starting',
-        'message': 'Подготовка...',
-        'prompt': prompt,
-        'original_prompt': prompt,
-        'images': [],
-        'created_at': time.time()  # Добавляем время создания
-    }
-
     data = request.get_json()
     
     prompt = data.get('prompt', '').strip()
@@ -202,7 +187,8 @@ def generate():
         'message': 'Подготовка...',
         'prompt': prompt,
         'original_prompt': prompt,
-        'images': []
+        'images': [],
+        'created_at': time.time()
     }
     
     executor.submit(
@@ -211,7 +197,6 @@ def generate():
     )
     
     return jsonify({'task_id': task_id})
-
 
 @app.route('/status/<task_id>')
 def status(task_id):

@@ -1,0 +1,349 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Image Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎨 AI Image Generator</h1>
+            <p class="subtitle">GigaChat + Stability AI</p>
+        </header>
+
+        <main>
+            <!-- Форма генерации -->
+            <div class="generator-form">
+                <div class="form-group">
+                    <label for="prompt">Ваш промпт:</label>
+                    <textarea 
+                        id="prompt" 
+                        placeholder="Опишите, что хотите увидеть... Например: коты в деловых костюмах на совете директоров"
+                        rows="3"
+                    ></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group half">
+                        <label for="style">Стиль:</label>
+                        <select id="style">
+                            {% for key, style in styles.items() %}
+                            <option value="{{ key }}">{{ style.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group half">
+                        <label for="size">Размер:</label>
+                        <select id="size">
+                            <option value="1024,1024">1024 × 1024 (1:1)</option>
+                            <option value="1280,720">1280 × 720 (16:9)</option>
+                            <option value="720,1280">720 × 1280 (9:16)</option>
+                            <option value="1024,768">1024 × 768 (4:3)</option>
+                            <option value="768,1024">768 × 1024 (3:4)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group checkbox-group">
+                    <label>
+                        <input type="checkbox" id="improve" checked>
+                        Улучшить промпт через GigaChat
+                    </label>
+                </div>
+
+                <button id="generateBtn" onclick="startGeneration()">
+                    <span class="btn-text">Сгенерировать</span>
+                    <span class="btn-loading" style="display: none;">⏳ Идёт генерация...</span>
+                </button>
+            </div>
+
+            <!-- Прогресс бар -->
+            <div id="progressSection" class="progress-section" style="display: none;">
+                <div class="progress-header">
+                    <span class="progress-text" id="progressText">Подготовка...</span>
+                    <span class="close-btn" onclick="closeProgress()">&times;</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+            </div>
+
+            <!-- Результат с промптами -->
+            <div id="resultSection" class="result-section" style="display: none;">
+                <div class="result-header">
+                    <h2>✨ Результат</h2>
+                    <span class="close-btn large" onclick="closeResult()">&times;</span>
+                </div>
+                
+                <!-- Промпты -->
+                <div class="prompts-comparison">
+                    <div class="prompt-box original">
+                        <div class="prompt-label">📝 Исходный промпт:</div>
+                        <div class="prompt-text" id="originalPrompt"></div>
+                    </div>
+                    <div class="prompt-arrow">⬇️</div>
+                    <div class="prompt-box improved">
+                        <div class="prompt-label">🚀 Улучшенный промпт (GigaChat):</div>
+                        <div class="prompt-text" id="improvedPrompt"></div>
+                    </div>
+                </div>
+                
+                <!-- Изображение -->
+                <div id="imageContainer" class="image-grid"></div>
+            </div>
+
+            <!-- Галерея -->
+            <div class="gallery-section">
+                <h2>📁 Все сгенерированные изображения</h2>
+                <div class="gallery-grid" id="galleryGrid">
+                    {% for img in existing_images %}
+                    <div class="gallery-item" onclick="showImageDetails('{{ img.name }}')">
+                        <img src="{{ img.path }}" alt="{{ img.prompt }}">
+                        <div class="gallery-caption">{{ img.prompt }}</div>
+                        {% if img.style %}
+                        <div class="gallery-style">{{ img.style }}</div>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <p class="empty-gallery">Изображений пока нет. Сгенерируйте первое!</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Powered by GigaChat + Stability AI</p>
+        </footer>
+    </div>
+
+    <!-- Модальное окно для просмотра деталей -->
+    <div id="imageModal" class="modal" style="display: none;" onclick="closeModal(event)">
+        <div class="modal-content">
+            <span class="close-btn modal-close" onclick="closeModalOnly()">&times;</span>
+            <div class="modal-image-container">
+                <img id="modalImage" src="" alt="">
+            </div>
+            <div class="modal-prompts" id="modalPrompts"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentTaskId = null;
+        let pollInterval = null;
+
+        async function startGeneration() {
+            const prompt = document.getElementById('prompt').value.trim();
+            const style = document.getElementById('style').value;
+            const size = document.getElementById('size').value.split(',');
+            const improve = document.getElementById('improve').checked;
+
+            if (!prompt) {
+                alert('Введите промпт!');
+                return;
+            }
+
+            // UI состояние - загрузка
+            document.getElementById('generateBtn').disabled = true;
+            document.getElementById('generateBtn').querySelector('.btn-text').style.display = 'none';
+            document.getElementById('generateBtn').querySelector('.btn-loading').style.display = 'inline';
+            document.getElementById('progressSection').style.display = 'block';
+            document.getElementById('resultSection').style.display = 'none';
+            
+            updateProgress(10, 'Отправка запроса...');
+
+            try {
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        prompt: prompt,
+                        style: style,
+                        improve: improve,
+                        width: parseInt(size[0]),
+                        height: parseInt(size[1])
+                    })
+                });
+
+                const data = await response.json();
+                console.log('Task ID:', data.task_id);
+
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                currentTaskId = data.task_id;
+                startPolling();
+
+            } catch (error) {
+                alert('Ошибка: ' + error.message);
+                resetUI();
+            }
+        }
+
+        function startPolling() {
+            pollInterval = setInterval(checkStatus, 1500);
+        }
+
+        async function checkStatus() {
+            if (!currentTaskId) return;
+
+            try {
+                const response = await fetch('/status/' + currentTaskId);
+                const data = await response.json();
+                console.log('Status:', data.status, data.message);
+
+                updateProgressFromStatus(data);
+
+                if (data.status === 'completed' || data.status === 'error') {
+                    clearInterval(pollInterval);
+                    showResult(data);
+                    resetUI();
+                }
+
+            } catch (error) {
+                console.error('Ошибка проверки статуса:', error);
+            }
+        }
+
+        function updateProgress(percent, message) {
+            document.getElementById('progressFill').style.width = percent + '%';
+            document.getElementById('progressText').textContent = message;
+        }
+
+        function updateProgressFromStatus(data) {
+            let percent = 0;
+            let message = data.message || '';
+
+            switch (data.status) {
+                case 'starting': percent = 10; break;
+                case 'improving_prompt': percent = 30; break;
+                case 'generating': percent = 60; break;
+                case 'saving': percent = 85; break;
+                case 'completed': percent = 100; break;
+                case 'error': percent = 100; break;
+            }
+
+            updateProgress(percent, message);
+        }
+
+        function closeProgress() {
+            document.getElementById('progressSection').style.display = 'none';
+            if (pollInterval) clearInterval(pollInterval);
+        }
+
+        function closeResult() {
+            document.getElementById('resultSection').style.display = 'none';
+            currentTaskId = null;
+        }
+
+        function showResult(data) {
+            const resultSection = document.getElementById('resultSection');
+            const imageContainer = document.getElementById('imageContainer');
+            const originalPromptEl = document.getElementById('originalPrompt');
+            const improvedPromptEl = document.getElementById('improvedPrompt');
+
+            resultSection.style.display = 'block';
+            imageContainer.innerHTML = '';
+
+            // Показываем промпты
+            originalPromptEl.textContent = data.original_prompt || 'Без названия';
+            improvedPromptEl.textContent = data.improved_prompt || data.prompt || 'Без улучшения';
+
+            if (data.status === 'completed' && data.images && data.images.length > 0) {
+                data.images.forEach((imgName, index) => {
+                    const img = document.createElement('div');
+                    img.className = 'result-image highlighted';
+                    img.innerHTML = `
+                        <div class="result-badge">✨ НОВОЕ</div>
+                        <img src="/images/${imgName}" alt="Результат ${index + 1}">
+                        <div class="image-actions">
+                            <a href="/images/${imgName}" download class="download-btn">⬇️ Скачать</a>
+                        </div>
+                    `;
+                    imageContainer.appendChild(img);
+                });
+
+                // Прокрутка к результату
+                resultSection.scrollIntoView({ behavior: 'smooth' });
+
+            } else {
+                improvedPromptEl.innerHTML = '<span style="color: #ff6b6b;">' + (data.error || data.message || 'Неизвестная ошибка') + '</span>';
+            }
+        }
+
+        async function showImageDetails(name) {
+            // Загружаем данные изображения
+            const response = await fetch('/api/images');
+            const images = await response.json();
+            
+            const imgData = images.find(img => img.name === name);
+            if (!imgData) return;
+
+            const modal = document.getElementById('imageModal');
+            const modalImg = document.getElementById('modalImage');
+            const modalPrompts = document.getElementById('modalPrompts');
+
+            modalImg.src = imgData.path;
+            modalPrompts.innerHTML = `
+                <div class="prompt-box original">
+                    <div class="prompt-label">📝 Исходный:</div>
+                    <div class="prompt-text">${imgData.original_prompt || 'Нет данных'}</div>
+                </div>
+                <div class="prompt-box improved">
+                    <div class="prompt-label">🚀 Улучшенный:</div>
+                    <div class="prompt-text">${imgData.improved_prompt || imgData.prompt || 'Нет данных'}</div>
+                </div>
+                ${imgData.style ? `<div class="prompt-style">🎨 Стиль: ${imgData.style}</div>` : ''}
+            `;
+
+            modal.style.display = 'flex';
+        }
+
+        function closeModalOnly() {
+            document.getElementById('imageModal').style.display = 'none';
+        }
+
+        function closeModal(event) {
+            if (event.target === document.getElementById('imageModal')) {
+                closeModalOnly();
+            }
+        }
+
+        function resetUI() {
+            document.getElementById('generateBtn').disabled = false;
+            document.getElementById('generateBtn').querySelector('.btn-text').style.display = 'inline';
+            document.getElementById('generateBtn').querySelector('.btn-loading').style.display = 'none';
+            currentTaskId = null;
+            if (pollInterval) clearInterval(pollInterval);
+        }
+
+        // Закрытие модального окна при клике вне его
+        window.onclick = function(event) {
+            const modal = document.getElementById('imageModal');
+            if (event.target === modal) {
+                closeModalOnly();
+            }
+        }
+
+        // ESC для закрытия
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeModalOnly();
+                closeResult();
+                closeProgress();
+            }
+        });
+
+        // Ctrl+Enter для отправки
+        document.getElementById('prompt').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && e.ctrlKey) {
+                startGeneration();
+            }
+        });
+    </script>
+</body>
+</html>

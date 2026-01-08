@@ -254,20 +254,19 @@
             improvedPromptEl.textContent = data.improved_prompt || data.prompt || 'Без улучшения';
 
             if (data.status === 'completed' && data.images && data.images.length > 0) {
-                data.images.forEach((imgName, index) => {
+                data.images.forEach((imgBase64, index) => {
                     const img = document.createElement('div');
                     img.className = 'result-image highlighted';
                     img.innerHTML = `
                         <div class="result-badge">✨ НОВОЕ</div>
-                        <img src="/images/${imgName}" alt="Результат ${index + 1}">
+                        <img src="${imgBase64}" alt="Результат ${index + 1}">
                         <div class="image-actions">
-                            <a href="/images/${imgName}" download class="download-btn">⬇️ Скачать</a>
+                            <a href="${imgBase64}" download="image_${index + 1}.png" class="download-btn">⬇️ Скачать</a>
                         </div>
                     `;
                     imageContainer.appendChild(img);
                 });
 
-                // Прокрутка к результату
                 resultSection.scrollIntoView({ behavior: 'smooth' });
 
             } else {

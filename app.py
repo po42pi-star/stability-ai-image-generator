@@ -2,6 +2,10 @@
 """
 Flask веб-приложение для генерации изображений.
 """
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 import os
 import uuid
 import json
@@ -18,6 +22,8 @@ app = Flask(__name__)
 
 # Глобальное хранилище задач (в памяти)
 tasks = {}
+
+executor = ThreadPoolExecutor(max_workers=1)
 
 # Художественные стили
 STYLES = {
@@ -68,6 +74,8 @@ def generate_image_task(task_id: str, original_prompt: str, style_key: str,
                        improve_prompt: bool, width: int, height: int):
     """Фоновая задача генерации изображения"""
     try:
+        logger.info(f"[{task_id}] Starting generation for: {original_prompt}")
+        
         tasks[task_id]['status'] = 'improving_prompt'
         tasks[task_id]['message'] = 'GigaChat улучшает промпт...'
         
@@ -77,9 +85,11 @@ def generate_image_task(task_id: str, original_prompt: str, style_key: str,
         improved_prompt = original_prompt
         
         if improve_prompt:
+            logger.info(f"[{task_id}] Improving prompt with GigaChat...")
             result = improver.improve(original_prompt)
             if result['success']:
                 improved_prompt = result['improved']
+                logger.info(f"[{task_id}] Improved prompt: {improved_prompt[:100]}...")
         
         # Добавляем стиль
         style = STYLES.get(style_key, STYLES['realistic'])
@@ -92,6 +102,8 @@ def generate_image_task(task_id: str, original_prompt: str, style_key: str,
         tasks[task_id]['style'] = style['name']
         tasks[task_id]['prompt'] = full_prompt
         
+        logger.info(f"[{task_id}] Generating image with Stability AI...")
+        
         # Генерируем
         artifacts = generator.client.generate_image(
             prompt=full_prompt,
@@ -101,10 +113,12 @@ def generate_image_task(task_id: str, original_prompt: str, style_key: str,
             samples=1
         )
         
+        logger.info(f"[{task_id}] Image generated, processing...")
+        
         tasks[task_id]['status'] = 'saving'
         tasks[task_id]['message'] = 'Сохранение изображения...'
         
-        # Конвертируем в base64 (НЕ сохраняем на диск!)
+        # Конвертируем в base64
         images_base64 = []
         for artifact in artifacts:
             image_data = base64.b64decode(artifact['base64'])
@@ -113,13 +127,15 @@ def generate_image_task(task_id: str, original_prompt: str, style_key: str,
         
         tasks[task_id]['status'] = 'completed'
         tasks[task_id]['message'] = 'Готово!'
-        tasks[task_id]['images'] = images_base64  # base64 строки
+        tasks[task_id]['images'] = images_base64
+        
+        logger.info(f"[{task_id}] Done! Images: {len(images_base64)}")
         
     except Exception as e:
+        logger.error(f"[{task_id}] Error: {str(e)}")
         tasks[task_id]['status'] = 'error'
         tasks[task_id]['message'] = f'Ошибка: {str(e)}'
         tasks[task_id]['error'] = str(e)
-        print(f"ERROR: {e}")
 
 
 @app.route('/')

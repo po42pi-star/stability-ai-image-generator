@@ -97,7 +97,6 @@ python app.py
 2. Перейдите в раздел **API Keys**
 3. Создайте новый ключ
 4. Добавьте в `.env`:
-
 ```env
 Stability_key=your_stability_api_key
 ```
@@ -109,7 +108,7 @@ Stability_key=your_stability_api_key
 3. Получите CLIENT_ID и CLIENT_SECRET
 4. Создайте AUTHORIZATION_KEY по инструкции на сайте [developers.sber.ru](https://developers.sber.ru/)
 5. Добавьте в `.env`:
-```
+```env
 CLIENT_ID=your_client_id
 CLIENT_SECRET=your_client_secret
 AUTHORIZATION_KEY=your_authorization_key

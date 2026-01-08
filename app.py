@@ -87,26 +87,32 @@ def generate_image_task(task_id: str, original_prompt: str, style_key: str,
                        improve_prompt: bool, width: int, height: int):
     """Фоновая задача генерации изображения"""
     try:
-        logger.info(f"[{task_id}] Starting generation for: {original_prompt}")
+        logger.info(f"[{task_id}] === START ===")
+        logger.info(f"[{task_id}] Prompt: {original_prompt}")
         
         tasks[task_id]['status'] = 'improving_prompt'
         tasks[task_id]['message'] = 'GigaChat улучшает промпт...'
         
         improver = PromptImprover()
-        generator = ImageGenerator()
         
         improved_prompt = original_prompt
         
         if improve_prompt:
-            logger.info(f"[{task_id}] Improving prompt with GigaChat...")
-            result = improver.improve(original_prompt)
-            if result['success']:
-                improved_prompt = result['improved']
-                logger.info(f"[{task_id}] Improved prompt: {improved_prompt[:100]}...")
+            logger.info(f"[{task_id}] Calling GigaChat API...")
+            try:
+                result = improver.improve(original_prompt)
+                logger.info(f"[{task_id}] GigaChat result: {result}")
+                if result['success']:
+                    improved_prompt = result['improved']
+            except Exception as gigachat_error:
+                logger.error(f"[{task_id}] GigaChat error: {gigachat_error}")
+                improved_prompt = original_prompt  # Используем оригинальный
         
         # Добавляем стиль
         style = STYLES.get(style_key, STYLES['realistic'])
         full_prompt = f"{improved_prompt}, {style['prompt']}"
+        
+        logger.info(f"[{task_id}] Full prompt: {full_prompt[:200]}...")
         
         tasks[task_id]['status'] = 'generating'
         tasks[task_id]['message'] = 'Stability AI генерирует изображение...'
@@ -115,7 +121,9 @@ def generate_image_task(task_id: str, original_prompt: str, style_key: str,
         tasks[task_id]['style'] = style['name']
         tasks[task_id]['prompt'] = full_prompt
         
-        logger.info(f"[{task_id}] Generating image with Stability AI...")
+        logger.info(f"[{task_id}] Calling Stability AI API...")
+        
+        generator = ImageGenerator()
         
         # Генерируем
         artifacts = generator.client.generate_image(
@@ -126,10 +134,7 @@ def generate_image_task(task_id: str, original_prompt: str, style_key: str,
             samples=1
         )
         
-        logger.info(f"[{task_id}] Image generated, processing...")
-        
-        tasks[task_id]['status'] = 'saving'
-        tasks[task_id]['message'] = 'Сохранение изображения...'
+        logger.info(f"[{task_id}] Stability AI returned {len(artifacts)} artifacts")
         
         # Конвертируем в base64
         images_base64 = []
@@ -142,10 +147,10 @@ def generate_image_task(task_id: str, original_prompt: str, style_key: str,
         tasks[task_id]['message'] = 'Готово!'
         tasks[task_id]['images'] = images_base64
         
-        logger.info(f"[{task_id}] Done! Images: {len(images_base64)}")
+        logger.info(f"[{task_id}] === DONE ===")
         
     except Exception as e:
-        logger.error(f"[{task_id}] Error: {str(e)}")
+        logger.error(f"[{task_id}] ERROR: {str(e)}")
         tasks[task_id]['status'] = 'error'
         tasks[task_id]['message'] = f'Ошибка: {str(e)}'
         tasks[task_id]['error'] = str(e)
@@ -169,7 +174,6 @@ def generate():
     cleanup_old_tasks()
     
     data = request.get_json()
-    # ... остальной код
     
     task_id = str(uuid.uuid4())
     tasks[task_id] = {
@@ -180,7 +184,7 @@ def generate():
         'images': [],
         'created_at': time.time()  # Добавляем время создания
     }
-    
+
     data = request.get_json()
     
     prompt = data.get('prompt', '').strip()

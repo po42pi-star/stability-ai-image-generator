@@ -6,6 +6,19 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+import time
+
+# Храним задачи 1 час
+TASK_TTL = 3600
+
+def cleanup_old_tasks():
+    """Удаляет старые задачи"""
+    current_time = time.time()
+    expired = [task_id for task_id, task in tasks.items() 
+               if task.get('created_at', current_time) < current_time - TASK_TTL]
+    for task_id in expired:
+        del tasks[task_id]
+
 import os
 import uuid
 import json
@@ -151,6 +164,23 @@ def index():
 @app.route('/generate', methods=['POST'])
 def generate():
     """Запуск генерации"""
+
+        # Очистка старых задач
+    cleanup_old_tasks()
+    
+    data = request.get_json()
+    # ... остальной код
+    
+    task_id = str(uuid.uuid4())
+    tasks[task_id] = {
+        'status': 'starting',
+        'message': 'Подготовка...',
+        'prompt': prompt,
+        'original_prompt': prompt,
+        'images': [],
+        'created_at': time.time()  # Добавляем время создания
+    }
+    
     data = request.get_json()
     
     prompt = data.get('prompt', '').strip()
@@ -182,9 +212,13 @@ def generate():
 @app.route('/status/<task_id>')
 def status(task_id):
     """Проверка статуса"""
+    logger.info(f"[status] Request for task_id: {task_id}")
+    logger.info(f"[status] Available tasks: {list(tasks.keys())}")
+    
     task = tasks.get(task_id)
     if not task:
-        return jsonify({'error': 'Задача не найдена'}), 404
+        logger.warning(f"[status] Task {task_id} not found")
+        return jsonify({'error': 'Задача не найдена', 'task_id': task_id}), 404
     
     return jsonify(task)
 
